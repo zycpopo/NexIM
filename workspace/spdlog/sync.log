@@ -1,0 +1,5 @@
+[2026-04-28 11:07:51] [file-logger] [debug   ] 这是一个debug级别的日志
+[2026-04-28 11:07:51] [file-logger] [info    ] 这是一个info级别的日志
+[2026-04-28 11:07:51] [file-logger] [warning ] 这是一个warn级别的日志
+[2026-04-28 11:07:51] [file-logger] [error   ] 这是一个error级别的日志
+[2026-04-28 11:07:51] [file-logger] [critical] 这是一个critical级别的日志
