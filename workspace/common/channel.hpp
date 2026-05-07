@@ -8,6 +8,10 @@
 //1.封装单个服务的信道管理类
 class ServiceChannel{
     public:
+        const std::string& get_name() const 
+        {
+            return _service_name;
+        }
         using ptr = std::shared_ptr<ServiceChannel>;
         using ChannelPtr = std::shared_ptr<brpc::Channel>;
         ServiceChannel(const std::string  &name):
@@ -56,6 +60,9 @@ class ServiceChannel{
         ChannelPtr choose()
         {
             std::unique_lock<std::mutex> lock(_mutex);
+            if (_channels.empty()){
+                return nullptr;
+            }
             int32_t idx = _index++ %_channels.size();
             return _channels[idx];
         }
@@ -71,6 +78,7 @@ class ServiceChannel{
 class ServiceManager
 {
     public:
+        ServiceManager() {}
         using ptr = std::shared_ptr<ServiceManager>;
         ServiceChannel::ChannelPtr choose(const std::string &service_name)
         {
@@ -89,8 +97,9 @@ class ServiceManager
         }
 
         //服务上线调用的回调接口，将服务节点管理起来
-        void onServiceOnline(const std::string &service_name , const std::string &host)
+        void onServiceOnline(const std::string &service_instance , const std::string &host)
         {
+            std::string service_name = getServiceName(service_instance);
             ServiceChannel::ptr service;
             {
                 std::unique_lock<std::mutex> lock(_mutex);
@@ -106,20 +115,23 @@ class ServiceManager
                 {
                     service = std::make_shared<ServiceChannel>(service_name);
                     _services.insert(std::make_pair(service_name, service));
+                }else{
+                    service = sit->second;
                 }
-                service = sit->second;
             }
             if(!service)
             {
-                LOG_ERROR("新增{}服务管理节点失败！",service);
+                LOG_ERROR("新增{}服务管理节点失败！",service->get_name());
                 return ;
             }
             service->append(host);
+            LOG_DEBUG("{}-{}服务上线节点,进行添加管理",service_name,host);
         }
 
         //服务下线调用的回调接口，从服务信道管理中，删除指定节点信道
-        void onServiceOffline(const std::string &service_name,const std::string &host)
+        void onServiceOffline(const std::string &service_instance,const std::string &host)
         {
+            std::string service_name = getServiceName(service_instance);
             ServiceChannel::ptr service;
             {
                 std::unique_lock<std::mutex> lock(_mutex);
@@ -138,10 +150,17 @@ class ServiceManager
                 service = sit->second;
             }
             service->remove(host);
+            LOG_DEBUG("{}-{}服务下线节点,进行删除管理",service_name,host);
+        }
+    private:
+        std::string getServiceName(std::string service_instance)
+        {
+            auto pos = service_instance.find_last_of('/');
+            if(pos == std::string::npos) return service_instance;
+            return service_instance.substr(0,pos);
         }
     private:
         std::mutex _mutex;
         std::unordered_set<std::string> _follow_services;
         std::unordered_map<std::string , ServiceChannel::ptr> _services;
-
 };

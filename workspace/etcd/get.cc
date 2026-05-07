@@ -31,7 +31,7 @@ int main()
     std::string etcd_host = "http://127.0.0.1:2379";
 
     etcd::Client client(etcd_host);
-    auto resp=client.ls ("/server").get();
+    auto resp=client.ls ("/service").get();
     if(resp.is_ok() == false){
         std::cout <<"获取数据失败"<<resp.error_message() << std::endl;
         return -1;

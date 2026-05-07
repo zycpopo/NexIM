@@ -58,7 +58,7 @@ class Discovery{
                 *_client.get(),                          // etcd客户端实例
                 basedir,                                 // 监听路径
                 std::bind(&Discovery::callback, this, std::placeholders::_1),  // 绑定回调
-                true                                     
+                true                                    
             );
         }
 
@@ -75,7 +75,7 @@ class Discovery{
                     if(_put_cb) _put_cb(ev.kv().key(),ev.kv().as_string());
                     LOG_DEBUG("新增服务：{}-{}",ev.kv().key(),ev.kv().as_string());
                 }else if(ev.event_type() == etcd::Event::EventType::DELETE_){
-                    if(_del_cb) _del_cb(ev.kv().key(),ev.kv().as_string());
+                    if(_del_cb) _del_cb(ev.kv().key(), ev.prev_kv().as_string());
                     LOG_DEBUG("删除服务：{}-{}",ev.prev_kv().key(),ev.prev_kv().as_string());
                 }
             }
