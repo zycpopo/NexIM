@@ -3,6 +3,7 @@
 #include <json/json.h>
 #include <elasticlient/client.h>
 #include <memory>
+#include <vector>
 #include "logger.hpp"
 
 bool Serialize(const Json::Value &val,std::string &dst)
@@ -39,7 +40,7 @@ bool UnSerialize(const std::string &src, Json::Value &val)
 class ESIndex{
     public:
         ESIndex(std::shared_ptr<elasticlient::Client> &client,
-            const std::string & name,const std::string &type):
+            const std::string & name,const std::string &type = "_doc"):
             _name(name),_type(type),_client(client){
             Json::Value analysis;
             Json::Value analyzer;
@@ -79,7 +80,6 @@ class ESIndex{
                 LOG_ERROR("索引序列化失败");
                 return false;
             }
-            LOG_INFO("请求正文:[{}]",body);
 
             //2.发起搜索请求
             try{
@@ -107,5 +107,145 @@ class ESIndex{
         std::string _type;
         Json::Value _properties;
         Json::Value _index;
+        std::shared_ptr<elasticlient::Client> _client;
+};
+
+class ESInsert{
+    public:
+        ESInsert(std::shared_ptr<elasticlient::Client> &client,
+            const std::string & name,const std::string &type = "_doc"):
+            _name(name),_type(type),_client(client){}
+        ESInsert &append(const std::string &key,const std::string &val){
+            _item[key] = val;
+        }
+        bool insert(const std::string id = ""){
+            std::string body;
+            bool ret = Serialize(_item,body);
+            if(ret == false){
+                LOG_ERROR("数据序列化失败");
+                return false;
+            }
+
+            //2.发起搜索请求
+            try{
+                auto rsp = _client->index(_name,_type,id,body);
+                //3.打印响应状态码和响应正文
+                if(rsp.status_code < 200 || rsp.status_code>=300)
+                {
+                    LOG_ERROR("新增数据{}失败,响应状态码异常{}",body,rsp.status_code);
+                    return false;
+                }
+            }catch(std::exception &e){
+                std::cout << "请求失败" << e.what() <<std::endl;
+                LOG_ERROR("新增数据{}失败：{}",body,e.what());
+                return false;
+            }
+            return true;
+        }
+    private:
+        std::string _name;
+        std::string _type;
+        Json::Value _item;
+        std::shared_ptr<elasticlient::Client> _client;
+};
+
+class ESRemove{
+    public:
+        ESRemove(std::shared_ptr<elasticlient::Client> &client,
+            const std::string & name,const std::string &type = "_doc"):
+            _name(name),_type(type),_client(client){}
+
+        bool remove(const std::string &id){
+            try{
+                auto rsp = _client->remove(_name,_type,id);
+                //3.打印响应状态码和响应正文
+                if(rsp.status_code < 200 || rsp.status_code>=300)
+                {
+                    LOG_ERROR("删除数据{}失败,响应状态码异常{}",id,rsp.status_code);
+                    return false;
+                }
+            }catch(std::exception &e){
+                std::cout << "请求失败" << e.what() <<std::endl;
+                LOG_ERROR("删除数据{}失败：{}",id,e.what());
+                return false;
+            }
+            return true;
+        }
+    private:
+        std::string _name;
+        std::string _type;
+        std::shared_ptr<elasticlient::Client> _client;
+};
+
+class ESSearch{
+    public:
+        ESSearch(std::shared_ptr<elasticlient::Client> &client,
+            const std::string & name,const std::string &type = "_doc"):
+            _name(name),_type(type),_client(client){}
+
+        ESSearch& append_must_not_terms(const std::string &key,std::vector<std::string> &vals){
+            Json::Value fields;
+            for(const auto& val : vals){
+                fields[key].append(val);
+            }
+            Json::Value terms;
+            terms["terms"] = fields;
+            _must_not.append(terms);
+            return *this;
+        }
+        ESSearch& append_should_match(const std::string &key,const std::string &val){
+            Json::Value field;
+            field[key] = val;
+            Json::Value match;
+            match["match"] = field;
+
+            _should.append(match);
+            return *this;
+        }
+        Json::Value search(){
+            Json::Value cond;
+            if(_must_not.empty() == false) cond["must_not"] = _must_not;
+            if(_should.empty() == false) cond["should"] = _should;
+            Json::Value query;
+            query["bool"] = cond;
+            std::string body;
+            bool ret = Serialize(query,body);
+            if(ret == false){
+                LOG_ERROR("索引序列化失败");
+                return Json::Value();
+            }
+
+            cpr::Response rsp;
+            try{
+                rsp = _client->search(_name,_type,body);
+                //3.打印响应状态码和响应正文
+                if(rsp.status_code < 200 || rsp.status_code>=300)
+                {
+                    LOG_ERROR("检索数据{}失败,响应状态码异常{}",_name,rsp.status_code);
+                    return Json::Value();
+                }
+
+            }catch(std::exception &e){
+                std::cout << "请求失败" << e.what() <<std::endl;
+                LOG_ERROR("检索数据{}失败：{}",_name,e.what());
+                return Json::Value();
+            }
+            LOG_DEBUG("检索数据成功！");
+
+            Json::Value result;   // 用于存储解析后的JSON
+            Json::Reader reader;  // JsonCpp 解析器
+    
+             // 把 rsp.text 响应体 解析成 Json::Value
+            if (!reader.parse(rsp.text, result)) {
+                LOG_ERROR("ES 响应 JSON 解析失败：{}", reader.getFormattedErrorMessages());
+                return Json::Value();
+            }
+            return result["hits"]["hits"];
+        }
+    private:
+        std::string _name;
+        std::string _type;
+        Json::Value _must_not;
+        Json::Value _should;
         std::shared_ptr<elasticlient::Client> _client;
 };
