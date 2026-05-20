@@ -98,7 +98,7 @@ class ESIndex{
                 LOG_ERROR("创建ES索引{}失败：{}",_name,e.what());
                 return false;
             }
-            LOG_DEBUG("测试索引创建成功！")
+            LOG_DEBUG("测试索引创建成功！");
             return true;
         }
 
